@@ -4,7 +4,7 @@ use std::io::{BufRead, Read, Write};
 use std::net::TcpStream;
 use byteorder::{NetworkEndian, ReadBytesExt};
 use regex::Regex;
-use crate::Message::{AuthAssociate, Idle};
+use crate::Message::{AuthAssociate, Echo, Idle, SetCounterValue};
 
 pub trait Deserialize {
     type Output;
@@ -70,6 +70,7 @@ impl Deserialize for Message {
         }
 
         match message_type {
+            4 => Ok(Echo()),
             5 => Ok(AuthAssociate(args[0].clone(), args[1].clone(), args[2].clone())),
             6 => Ok(Idle()),
             _ => Err(io::Error::new(
@@ -83,9 +84,12 @@ impl Deserialize for Message {
 impl Serialize for Message {
     fn serialize(&self, buf: &mut impl Write) -> io::Result<()> {
         match self {
-            Message::SetCounterValue(message) => {
+            SetCounterValue(message) => {
                 let flaps = flaps_from_string(message);
                 buf.write_all(&flaps)?
+            },
+            Echo() => {
+                buf.write_all(&[0, 0, 0, 4, 0, 0, 0, 4])?
             },
             Message::Ok() => {
                 buf.write_all(&[0, 0, 0, 4, 0, 0, 0, 1])?

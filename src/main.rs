@@ -2,8 +2,10 @@ use std::{io, thread};
 use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tiny_http::{Request, Response, Server, StatusCode};
 use flapit_server::{Message, Protocol};
+use flapit_server::Message::{Echo};
 
 fn main() -> io::Result<()> {
     eprintln!("Starting server on '{}'", "0.0.0.0:443");
@@ -69,21 +71,47 @@ fn handle_http(mut request: Request, devices: Arc<Mutex<HashMap<String, TcpStrea
 }
 
 fn handle_connection(stream: TcpStream, devices: Arc<Mutex<HashMap<String, TcpStream>>>) -> io::Result<()> {
+    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
     let peer_addr = stream.peer_addr()?;
     let mut protocol = Protocol::with_stream(stream.try_clone()?)?;
+    let mut serial: Option<String> = None;
 
     loop {
-        let message = protocol.read_message::<Message>()?;
+        let message = match protocol.read_message::<Message>() {
+            Ok(m) => m,
+            Err(_) => {
+                eprintln!("Sending Echo");
+                if protocol.send_message(&Echo()).is_ok() {
+                    if let Ok(message) = protocol.read_message::<Message>() {
+                        message
+                    } else {
+                        break
+                    }
+                } else {
+                    break
+                }
+            }
+        };
         eprintln!("Incoming {:?} [{}]", message, peer_addr);
 
         match message {
-            Message::AuthAssociate(serial, _, _) => {
-                protocol.send_message(&Message::Ok())?;
-                devices.lock().unwrap().insert(serial, stream.try_clone()?);
+            Message::AuthAssociate(s, _, _) => {
+                if protocol.send_message(&Message::Ok()).is_ok() {
+                    serial = Some(s.clone());
+                    devices.lock().unwrap().insert(s, stream.try_clone()?);
+                    ()
+                } else {
+                    break
+                }
             },
             _ => ()
         }
     }
+    if serial.is_some() {
+        devices.lock().unwrap().remove(&serial.clone().unwrap());
+        println!("{} Removed!", serial.unwrap());
+    }
+    Ok(())
 }
 
 fn parse_query_string(string: &String) -> HashMap<String, String> {
