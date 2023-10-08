@@ -3,16 +3,18 @@ use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use clap::Parser;
 use tiny_http::{Request, Response, Server, StatusCode};
 use flapit_server::{Message, Protocol};
 use flapit_server::Message::{Echo};
 
 fn main() -> io::Result<()> {
-    eprintln!("Starting server on '{}'", "0.0.0.0:443");
-    eprintln!("Starting server on '{}'", "0.0.0.0:3000");
+    let args = Args::parse();
+    eprintln!("Starting API server on '0.0.0.0:{}'", args.api_port);
+    eprintln!("Starting device server on '0.0.0.0:{}'", args.device_port);
 
-    let listener = TcpListener::bind("0.0.0.0:443")?;
-    let http = Server::http("0.0.0.0:3000").unwrap();
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", args.device_port))?;
+    let http = Server::http(format!("0.0.0.0:{}", args.api_port)).unwrap();
 
     let devices: Arc<Mutex<HashMap<String, TcpStream>>> = Arc::new(Mutex::new(HashMap::new()));
     let devices_clone = Arc::clone(&devices);
@@ -123,4 +125,13 @@ fn parse_query_string(string: &String) -> HashMap<String, String> {
     }
 
     map
+}
+
+#[derive(Parser, Debug)]
+struct Args {
+    #[arg(short, long, default_value_t=3000)]
+    api_port: u16,
+
+    #[arg(short, long, default_value_t=443)]
+    device_port:u16,
 }
