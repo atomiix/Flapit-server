@@ -2,7 +2,7 @@ use std::{io, thread};
 use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use clap::Parser;
 use tiny_http::{Request, Response, Server, StatusCode};
 use flapit_server::{Message, Protocol};
@@ -16,7 +16,7 @@ fn main() -> io::Result<()> {
     let listener = TcpListener::bind(format!("0.0.0.0:{}", args.device_port))?;
     let http = Server::http(format!("0.0.0.0:{}", args.api_port)).unwrap();
 
-    let devices: Arc<Mutex<HashMap<String, TcpStream>>> = Arc::new(Mutex::new(HashMap::new()));
+    let devices: Arc<Mutex<HashMap<String, (SystemTime, TcpStream)>>> = Arc::new(Mutex::new(HashMap::new()));
     let devices_clone = Arc::clone(&devices);
 
     thread::spawn(move || {
@@ -41,7 +41,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn handle_http(mut request: Request, devices: Arc<Mutex<HashMap<String, TcpStream>>>) -> io::Result<()> {
+fn handle_http(mut request: Request, devices: Arc<Mutex<HashMap<String, (SystemTime, TcpStream)>>>) -> io::Result<()> {
     let mut content = String::new();
     request.as_reader().read_to_string(&mut content).unwrap();
 
@@ -56,12 +56,15 @@ fn handle_http(mut request: Request, devices: Arc<Mutex<HashMap<String, TcpStrea
 
     let message = Message::SetCounterValue(parameters["message"].clone());
 
-    if let Some(stream) = devices.lock().unwrap().get(parameters["device"].as_str()) {
-        let mut protocol = Protocol::with_stream(stream.try_clone()?)?;
-        protocol.send_message(&message)?;
-
+    if let Some((_, stream)) = devices.lock().unwrap().get(parameters["device"].as_str()) {
         let response = Response::new_empty(StatusCode::from(202));
         request.respond(response)?;
+
+        let mut protocol = Protocol::with_stream(stream.try_clone()?)?;
+        if protocol.send_message(&message).is_err() {
+            devices.lock().unwrap().remove(parameters["device"].as_str());
+            println!("{} Removed!", parameters["device"].as_str());
+        }
 
         return Ok(());
     }
@@ -72,11 +75,12 @@ fn handle_http(mut request: Request, devices: Arc<Mutex<HashMap<String, TcpStrea
     Ok(())
 }
 
-fn handle_connection(stream: TcpStream, devices: Arc<Mutex<HashMap<String, TcpStream>>>) -> io::Result<()> {
-    stream.set_read_timeout(Some(Duration::from_secs(20)))?;
+fn handle_connection(stream: TcpStream, devices: Arc<Mutex<HashMap<String, (SystemTime, TcpStream)>>>) -> io::Result<()> {
+    stream.set_read_timeout(Some(Duration::from_secs(60)))?;
     let peer_addr = stream.peer_addr()?;
     let mut protocol = Protocol::with_stream(stream.try_clone()?)?;
     let mut serial: Option<String> = None;
+    let handle_time = SystemTime::now();
 
     loop {
         let message = match protocol.read_message::<Message>() {
@@ -98,20 +102,24 @@ fn handle_connection(stream: TcpStream, devices: Arc<Mutex<HashMap<String, TcpSt
 
         match message {
             Message::AuthAssociate(s, _, _) => {
-                if protocol.send_message(&Message::Ok()).is_ok() {
-                    serial = Some(s.clone());
-                    devices.lock().unwrap().insert(s, stream.try_clone()?);
-                    ()
-                } else {
-                    break
-                }
+                protocol.send_message(&Message::Ok())?;
+                serial = Some(s.clone());
+                devices.lock().unwrap().insert(s, (handle_time, stream.try_clone()?));
             },
             _ => ()
         }
     }
     if serial.is_some() {
-        devices.lock().unwrap().remove(&serial.clone().unwrap());
-        println!("{} Removed!", serial.unwrap());
+        let mut devices = devices.lock().unwrap();
+        match devices.get(&serial.clone().unwrap()) {
+            Some((saved_time, _)) => {
+                if saved_time == &handle_time {
+                    devices.remove(&serial.clone().unwrap());
+                    println!("{} Removed!", serial.unwrap());
+                }
+            },
+            None => ()
+        }
     }
     Ok(())
 }
@@ -120,8 +128,9 @@ fn parse_query_string(string: &String) -> HashMap<String, String> {
     let mut map: HashMap<String, String> = HashMap::new();
 
     for parameter in string.split("&") {
-        let (key, value) = parameter.split_once("=").unwrap();
-        map.insert(String::from(key), String::from(value));
+        if let Some((key, value)) = parameter.split_once("=") {
+            map.insert(String::from(key), String::from(value));
+        }
     }
 
     map

@@ -106,15 +106,18 @@ const LEAD_FLAPS: [&str; 60] = ["BLANK", "BLAST", "LIKE_RU", "7", "LIKE_FR", "LI
     "FOLLOW_US_KO", "FOLLOW_US_ZH", "CHECK_IN_PT", "CHECK_IN_RU", "CHECK_IN_JP", "CHECK_IN_KO",
     "CHECK_IN_ZH", "CHECK_IN_EN", "1", "#", "TWITTER", "ZOMATO", "YOUTUBE", "2", "INSTAGRAM",
     "GOOGLE_STATS", "VKONTAKTE", "FOURSQUARE", "SWARM", "3", "YELP", "TRIPADVISOR", "WEIBO",
-    "DIANPING", "FACEBOOK", "4", "SMILEY", "FACEBOOK_THUMB", "THANKS_ES", "THANKS_PT", "THANKS_RU",
+    "DIANPING", "FACEBOOK", "4", ":)", "(Y)", "THANKS_ES", "THANKS_PT", "THANKS_RU",
     "5", "THANKS_FR", "THANKS_EN", "THANKS_IT", "THANKS_DE", "THANKS_JA", "6", "THANKS_KO",
     "THANKS_ZH"];
 
-const FLAPS: [&str; 60] = ["BLANK", "EMPTY_BUBBLE", "1", "A", "B", "C", "D", "/", "E", "F", "G",
+const FLAPS: [&str; 60] = ["_", "EMPTY_BUBBLE", "1", "A", "B", "C", "D", "/", "E", "F", "G",
     "H", "I", "2", "J", "K", "L", "M", "N", "5", "O", "P", "Q", "R", "S", "3", "T", "U", "V", "W",
-    "X", "6", "Z", "Y", "HEART", "€", "$", "4", "£", "¥", "+", "?", "!", "FULL_BUBBLE", "&", "@",
-    "#", "->", ":", "0", ".", "9", "HALF_BUBBLE", "FULL_STAR", "HALF_STAR", "EMPTY_STAR", "BLANK2",
-    "8", "PERCENT", "7"];
+    "X", "6", "Z", "Y", "<3", "€", "$", "4", "£", "¥", "+", "?", "!", "FULL_BUBBLE", "&", "@",
+    "#", "->", ":", "0", ".", "9", "HALF_BUBBLE", "*", "HALF_STAR", "EMPTY_STAR", "BLANK2",
+    "8", "%", "7"];
+
+const FLAPS_ALT: [(&str, &str); 4] = [("BLANK", "_"), ("PERCENT", "%"), ("FULL_STAR", "*"), ("HEART", "<3")];
+const LEAD_FLAPS_ALT: [(&str, &str); 3] = [("SMILEY", ":)"), (":-)", ":)"), ("THUMBSUP", "(Y)")];
 
 fn flaps_from_string(message: &String) -> [u8;15] {
 
@@ -129,10 +132,10 @@ fn flaps_from_string(message: &String) -> [u8;15] {
     pattern.sort_by(|a, b| Ord::cmp(&b.len(), &a.len()));
     let regex = Regex::new(&format!(r"({})", &pattern.join("|"))).unwrap();
 
-    let flaps = &flaps.to_uppercase();
+    let flaps = &FLAPS_ALT.iter().fold(flaps.to_uppercase(), |acc, v| acc.replace(v.0, v.1));
     let matches: Vec<_> = regex.find_iter(flaps).collect();
 
-    let lead = &lead.to_uppercase();
+    let lead = &LEAD_FLAPS_ALT.iter().fold(lead.to_uppercase(), |acc, v| acc.replace(v.0, v.1));
     payload[8] = match LEAD_FLAPS.iter().position(|&e| lead.as_str() == e) {
         None => 0,
         Some(index) => index as u8
