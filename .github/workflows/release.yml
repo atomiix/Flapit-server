@@ -1,0 +1,83 @@
+name: Release FlapIt Server
+on:
+  release:
+    types: [published]
+jobs:
+  release-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        target: [x86_64-unknown-linux-gnu, arm-unknown-linux-gnueabihf, armv7-unknown-linux-gnueabihf]
+    steps:
+      - name: Checking out ⬇️
+        uses: actions/checkout@v4
+      - name: Setting up ⚙️
+        run: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
+          cargo install cross --git https://github.com/cross-rs/cross
+      - name: Compiling 🚀
+        run: |
+          cross build --release --target ${{ matrix.target }}
+          zip -j ${{ matrix.target }}.zip target/${{ matrix.target }}/release/flapit_server
+      - name: Add ${{ matrix.target }} binary to release assets 🗂️
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const owner = '${{ github.repository_owner }}';
+            const repo = '${{ github.repository }}'.split('/')[1];
+            const filename = '${{ matrix.target }}.zip';
+
+            const release = await github.rest.repos.getReleaseByTag({
+              owner,
+              repo,
+              tag: '${{ github.ref_name }}',
+            });
+
+            await github.rest.repos.uploadReleaseAsset({
+              owner,
+              repo,
+              release_id: release.data.id,
+              name: filename,
+              data: fs.readFileSync(filename)
+            });
+
+  release-macos-universal:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checking out ⬇️
+        uses: actions/checkout@v4
+      - name: Setting up ⚙️
+        run: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
+          rustup target add aarch64-apple-darwin
+      - name: Compiling 🚀
+        run: |
+          cargo build --release --target=x86_64-apple-darwin --target=aarch64-apple-darwin
+          lipo -create -output flapit_server target/aarch64-apple-darwin/release/flapit_server target/x86_64-apple-darwin/release/flapit_server
+          zip darwin.zip flapit_server
+      - name: Add MacOS binary to release assets 🗂️
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const owner = '${{ github.repository_owner }}';
+            const repo = '${{ github.repository }}'.split('/')[1];
+            
+            const release = await github.rest.repos.getReleaseByTag({
+              owner,
+              repo,
+              tag: '${{ github.ref_name }}',
+            });
+
+            await github.rest.repos.uploadReleaseAsset({
+              owner,
+              repo,
+              release_id: release.data.id,
+              name: 'darwin.zip',
+              data: fs.readFileSync('./darwin.zip')
+            });
