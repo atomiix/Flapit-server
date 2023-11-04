@@ -145,7 +145,7 @@ fn flaps_from_string(message: &String) -> [u8;15] {
         payload[i+9] = FLAPS.iter().position(|&e| m.as_str() == e).unwrap() as u8;
     }
 
-    println!("Sending {} {}", LEAD_FLAPS[payload[8] as usize], payload.map(|v| FLAPS[v as usize])[9..].join("|"));
+    log::debug!("Sending {} {}", LEAD_FLAPS[payload[8] as usize], payload.map(|v| FLAPS[v as usize])[9..].join("|"));
 
     payload
 }

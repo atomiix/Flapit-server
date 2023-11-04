@@ -10,3 +10,5 @@ byteorder = "1.4.3"
 tiny_http = "0.12.0"
 regex = "1.9.6"
 clap = { version = "4.4.6", features = ["derive"] }
+log = "0.4.20"
+env_logger = "0.10.0"

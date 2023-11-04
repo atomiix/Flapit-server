@@ -4,14 +4,19 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 use clap::Parser;
+use env_logger::Builder;
+use log::LevelFilter;
 use tiny_http::{Request, Response, Server, StatusCode};
 use flapit_server::{Message, Protocol};
 use flapit_server::Message::{Echo};
 
 fn main() -> io::Result<()> {
     let args = Args::parse();
-    eprintln!("Starting API server on '0.0.0.0:{}'", args.api_port);
-    eprintln!("Starting device server on '0.0.0.0:{}'", args.device_port);
+    let level = match args.verbose { true => LevelFilter::Debug, false => LevelFilter::Info };
+    Builder::new().filter_level(level).init();
+
+    log::info!("Starting API server on '0.0.0.0:{}'", args.api_port);
+    log::info!("Starting device server on '0.0.0.0:{}'", args.device_port);
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", args.device_port))?;
     let http = Server::http(format!("0.0.0.0:{}", args.api_port)).unwrap();
@@ -63,7 +68,7 @@ fn handle_http(mut request: Request, devices: Arc<Mutex<HashMap<String, (SystemT
         let mut protocol = Protocol::with_stream(stream.try_clone()?)?;
         if protocol.send_message(&message).is_err() {
             devices.lock().unwrap().remove(parameters["device"].as_str());
-            println!("{} Removed!", parameters["device"].as_str());
+            log::debug!("{} Removed!", parameters["device"].as_str());
         }
 
         return Ok(());
@@ -86,7 +91,7 @@ fn handle_connection(stream: TcpStream, devices: Arc<Mutex<HashMap<String, (Syst
         let message = match protocol.read_message::<Message>() {
             Ok(m) => m,
             Err(_) => {
-                eprintln!("Sending Echo");
+                log::debug!("Sending Echo");
                 if protocol.send_message(&Echo()).is_ok() {
                     if let Ok(message) = protocol.read_message::<Message>() {
                         message
@@ -98,7 +103,7 @@ fn handle_connection(stream: TcpStream, devices: Arc<Mutex<HashMap<String, (Syst
                 }
             }
         };
-        eprintln!("Incoming {:?} [{}]", message, peer_addr);
+        log::debug!("Incoming {:?} [{}]", message, peer_addr);
 
         match message {
             Message::AuthAssociate(s, _, _) => {
@@ -115,7 +120,7 @@ fn handle_connection(stream: TcpStream, devices: Arc<Mutex<HashMap<String, (Syst
             Some((saved_time, _)) => {
                 if saved_time == &handle_time {
                     devices.remove(&serial.clone().unwrap());
-                    println!("{} Removed!", serial.unwrap());
+                    log::debug!("{} Removed!", serial.unwrap());
                 }
             },
             None => ()
@@ -143,4 +148,7 @@ struct Args {
 
     #[arg(short, long, default_value_t=443)]
     device_port:u16,
+
+    #[arg(short, long, default_value_t=false)]
+    verbose:bool
 }
