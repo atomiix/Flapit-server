@@ -13,7 +13,7 @@ use flapit_server::Message::{Echo};
 fn main() -> io::Result<()> {
     let args = Args::parse();
     let level = match args.verbose { true => LevelFilter::Debug, false => LevelFilter::Info };
-    Builder::new().filter_level(level).init();
+    Builder::new().filter_module("flapit_server", level).init();
 
     log::info!("Starting API server on '0.0.0.0:{}'", args.api_port);
     log::info!("Starting device server on '0.0.0.0:{}'", args.device_port);
@@ -147,8 +147,8 @@ struct Args {
     api_port: u16,
 
     #[arg(short, long, default_value_t=443)]
-    device_port:u16,
+    device_port: u16,
 
     #[arg(short, long, default_value_t=false)]
-    verbose:bool
+    verbose: bool
 }
