@@ -48,7 +48,7 @@ fn main() -> io::Result<()> {
 
 fn handle_http(mut request: Request, devices: Arc<Mutex<HashMap<String, (SystemTime, TcpStream)>>>) -> io::Result<()> {
     let mut content = String::new();
-    request.as_reader().read_to_string(&mut content).unwrap();
+    request.as_reader().read_to_string(&mut content)?;
 
     let parameters = parse_query_string(&content);
 
